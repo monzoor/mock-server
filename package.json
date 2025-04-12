@@ -1,0 +1,20 @@
+{
+  "name": "mon-factory",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "monFactory:run": "node monFactory.js",
+    "start:json-server": "npm run monFactory:run && [ $? -eq 0 ] && json-server db.json --port 3000 || echo 'monFactory:run failed, server not started'",
+    "watch:json-server": "npm run monFactory:run && json-server --watch db.json --port 3000"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@faker-js/faker": "^9.6.0",
+    "json-server": "^1.0.0-beta.3"
+  },
+  "bin": {
+    "factory-bot-cli": "./factory-bot-cli.js"
+  }
+}
