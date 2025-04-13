@@ -1,0 +1,25 @@
+{
+  "factory": {
+    "defaultRepeat": 20,
+    "maxRepeat": 2000,
+    "useStreaming": true,
+    "streamingThreshold": 5242880
+  },
+  "processing": {
+    "parallel": true,
+    "maxWorkers": 4
+  },
+  "output": {
+    "pretty": true
+  },
+  "server": {
+    "port": 3000,
+    "delay": 100,
+    "watch": true
+  },
+  "entities": {
+    "user": 10,
+    "companyItems": 100,
+    "products": 50
+  }
+}

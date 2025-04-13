@@ -11,6 +11,8 @@
 import path from 'path';
 import * as fileUtils from './utils/fileUtils.js';
 import { extractFactoryKeys, getPaths } from './core/factoryCore.js';
+import { runWithWorkers } from './utils/workerUtils.js';
+import { configManager } from './config/configManager.js';
 
 const { factoryFolder, dbDir, outputFile } = getPaths();
 
@@ -20,13 +22,23 @@ const { factoryFolder, dbDir, outputFile } = getPaths();
  */
 export const runFactoryFiles = async () => {
   try {
-    fileUtils.ensureDirectoryExists(dbDir);
+    await fileUtils.ensureDirectoryExists(dbDir);
     const jsFiles = await fileUtils.readDirectoryFiles(factoryFolder, /\.js$/);
+    const filePaths = jsFiles.map(file => path.join(factoryFolder, file));
     
-    for (const file of jsFiles) {
-      const filePath = path.join(factoryFolder, file);
-      console.log(`Running factory file: ${file}`);
-      await import(filePath);
+    // Check if parallel processing is enabled
+    const useParallel = configManager.get('processing.parallel', true);
+    
+    if (useParallel) {
+      console.log('Using parallel processing for factory files');
+      const maxWorkers = configManager.get('processing.maxWorkers', 0);
+      await runWithWorkers(filePaths, maxWorkers);
+    } else {
+      console.log('Using sequential processing for factory files');
+      for (const filePath of filePaths) {
+        console.log(`Running factory file: ${path.basename(filePath)}`);
+        await import(filePath);
+      }
     }
     
     console.log('All factory files processed successfully');
@@ -60,7 +72,18 @@ export const mergeJsonFiles = async () => {
       }
     }
     
-    await fileUtils.writeJsonFile(outputFile, mergedData);
+    // Use streaming for large merged data
+    const useStreaming = configManager.get('factory.useStreaming') && 
+      fileUtils.shouldUseStreaming(mergedData, configManager.get('factory.streamingThreshold'));
+    
+    if (useStreaming) {
+      await fileUtils.streamJsonToFile(outputFile, mergedData, {
+        pretty: configManager.get('output.pretty')
+      });
+    } else {
+      await fileUtils.writeJsonFile(outputFile, mergedData);
+    }
+    
     console.log(`Merged valid files into ${outputFile}`);
   } catch (error) {
     console.error('Error merging JSON files:', error);
@@ -74,6 +97,10 @@ export const mergeJsonFiles = async () => {
  */
 export const main = async () => {
   try {
+    // Load configuration
+    configManager.load();
+    console.log('Configuration loaded');
+    
     await runFactoryFiles();
     await mergeJsonFiles();
     console.log('Mock server data generation complete!');
