@@ -5,7 +5,7 @@ import { createAndMapArray } from '../utils/arrayUtils.js';
 monFactory.create(
   {
     _key: "companyItems",
-    _repeat: 5,
+    _repeat: 51,
   },
   () => ({
     name: faker.person.fullName(),

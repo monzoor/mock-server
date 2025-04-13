@@ -12,7 +12,6 @@
  */
 
 import path from 'path';
-import { fileURLToPath } from 'url';
 import * as fileUtils from './utils/fileUtils.js';
 import { createMockData, getPaths } from './core/factoryCore.js';
 import { main } from './runner.js';
@@ -35,7 +34,7 @@ export const monFactory = {
     const { key, data } = createMockData(config, templateFn);
     
     const filePath = path.join(dbDir, `${key}.json`);
-    fileUtils.writeJsonFileSync(filePath, data);
+    fileUtils.writeJsonFile(filePath, data, true);
     
     return data;
   }

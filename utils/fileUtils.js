@@ -10,41 +10,37 @@
 
 import fs from 'fs/promises';
 import { existsSync, writeFileSync } from 'fs';
-import path from 'path';
 
 /**
  * Ensures a directory exists, creates it if it doesn't
  * @param {string} dirPath - Directory path to check/create
- */
-export const ensureDirectoryExists = (dirPath) => {
-  if (!existsSync(dirPath)) {
-    fs.mkdir(dirPath, { recursive: true });
-  }
-};
-
-/**
- * Write data to a JSON file
- * @param {string} filePath - Path to write to
- * @param {object} data - Data to write
  * @returns {Promise<void>}
  */
-export const writeJsonFile = async (filePath, data) => {
+export const ensureDirectoryExists = async (dirPath) => {
   try {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    if (!existsSync(dirPath)) {
+      await fs.mkdir(dirPath, { recursive: true });
+    }
   } catch (error) {
-    console.error(`Error writing to ${filePath}:`, error);
+    console.error(`Error ensuring directory ${dirPath}:`, error);
     throw error;
   }
 };
 
 /**
- * Write data to a JSON file synchronously
+ * Write data to a JSON file (async or sync based on mode)
  * @param {string} filePath - Path to write to
  * @param {object} data - Data to write
+ * @param {boolean} [sync=false] - Whether to write synchronously
  */
-export const writeJsonFileSync = (filePath, data) => {
+export const writeJsonFile = async (filePath, data, sync = false) => {
   try {
-    writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    const jsonData = JSON.stringify(data, null, 2);
+    if (sync) {
+      writeFileSync(filePath, jsonData, 'utf-8');
+    } else {
+      await fs.writeFile(filePath, jsonData, 'utf-8');
+    }
   } catch (error) {
     console.error(`Error writing to ${filePath}:`, error);
     throw error;
