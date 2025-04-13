@@ -1,14 +1,17 @@
 import { faker } from '@faker-js/faker';
 import { monFactory } from '../monFactory.js';
+import { createAndMapArray } from '../utils/arrayUtils.js';
 
-monFactory.create({
-  _key: 'company',
-  _template: {
-    id: faker.number.int(),
+monFactory.create(
+  {
+    _key: "companyItems",
+    _repeat: 5,
+  },
+  () => ({
     name: faker.person.fullName(),
     email: faker.internet.email(),
     address: faker.location.streetAddress(),
-    job: {
+    jobs: createAndMapArray(5, () => ({
       title: faker.person.jobTitle(),
       id: faker.number.int(),
       company: {
@@ -20,7 +23,6 @@ monFactory.create({
           zipCode: faker.location.zipCode(),
         },
       },
-    },
-    _repeat: 4,
-  },
-});
+    })),
+  })
+);

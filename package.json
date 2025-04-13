@@ -4,15 +4,18 @@
   "type": "module",
   "scripts": {
     "monFactory:run": "node monFactory.js",
-    "start:json-server": "npm run monFactory:run && [ $? -eq 0 ] && json-server db.json --port 3000 || echo 'monFactory:run failed, server not started'",
-    "watch:json-server": "npm run monFactory:run && json-server --watch db.json --port 3000"
+    "start:json-server": "yarn monFactory:run && json-server --watch db.json --port 3000",
+    "watch:factory": "nodemon --watch factory -e js,json --exec 'yarn start:json-server'"
   },
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Project configuration for the mock server. This package.json defines the project dependencies, scripts, and metadata for the mon-factory mock data generation system. It includes commands for running the factory and starting json-server with the generated data.",
   "dependencies": {
     "@faker-js/faker": "^9.6.0",
     "json-server": "^1.0.0-beta.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   },
   "bin": {
     "factory-bot-cli": "./factory-bot-cli.js"

@@ -1,115 +1,193 @@
-# Mon Factory
+# Mock Server with monFactory
 
-Mon Factory is a mock data generation tool that creates JSON files based on templates and merges them into a single database file for use with `json-server`.
+A flexible mock data generation system that leverages [json-server](https://www.npmjs.com/package/json-server) to create a fully functional mock REST API with zero coding.
 
-## How to Run the Project
+## Installation
 
-1. **Install Dependencies**  
-   Run the following command to install the required dependencies:
+```bash
+# Clone the repository
+git clone <repository-url>
+cd mock-server
 
-   ```bash
-   yarn install
-   ```
+# Install dependencies
+npm install
+# or
+yarn install
+```
 
-2. **Generate Mock Data and Start the Server**  
-   To generate mock data and start the JSON server, run:
+## Running the Server
 
-   ```bash
-   yarn run start:json-server
-   ```
+```bash
+# Generate mock data and start the server
+npm run start:json-server
+# or
+yarn start:json-server
 
-   This will:
+# Watch mode - automatically regenerate when factory files change
+npm run watch:factory
+# or
+yarn watch:factory
+```
 
-   - Execute all factory files in the `factory` folder.
-   - Remove extra database files in the `db` folder.
-   - Merge all JSON files into a single `db.json` file.
-   - Start the JSON server on port `3000`.
+## How to Create Factory Files
 
-3. **Watch for Changes**  
-   To watch for changes and automatically update the server, run:
-   ```bash
-   yarn run watch:json-server
-   ```
+Factory files are the blueprint for your mock data. Each factory file creates a specific data type that will be available through the API.
 
-## How to Use `monFactory`
+### Basic Factory Structure
 
-`monFactory` is used to create mock data based on a template. It generates JSON files in the `db` folder.
+Create a new JavaScript file in the `factory` directory with the following structure:
 
-### Example Usage
-
-Here is an example of how to use `monFactory` in a factory file:
-
-```js
+```javascript
 import { faker } from "@faker-js/faker";
 import { monFactory } from "../monFactory.js";
 
-monFactory.create({
-  _key: "example",
-  _template: {
+monFactory.create(
+  {
+    _key: "entityName", // This will be the endpoint name in your API
+    _repeat: 10, // Optional: number of items to create
+  },
+  () => ({
+    // Your entity structure with faker data
     id: faker.number.int(),
     name: faker.person.fullName(),
     email: faker.internet.email(),
-    _repeat: 5,
-  },
-});
+    // Add more properties as needed
+  })
+);
 ```
 
-This will generate a file named `example.json` in the `db` folder with 5 entries.
+### The `_repeat` Option
 
-## Definitions
+The `_repeat` option controls how many instances of your entity will be created:
 
-### `_key`
+- **Without `_repeat`**: Creates a single object
 
-- **Type**: `string`
-- **Description**: The name of the JSON file to be created in the `db` folder. It must be a non-empty string.
+  ```javascript
+  monFactory.create({ _key: "profile" }, () => ({
+    name: faker.person.fullName(),
+    bio: faker.lorem.paragraph(),
+  }));
+  // Result: { "profile": { "id": 1, "name": "...", "bio": "..." } }
+  ```
 
-### `_template`
+- **With `_repeat`**: Creates an array of objects
+  ```javascript
+  monFactory.create({ _key: "users", _repeat: 3 }, () => ({
+    name: faker.person.fullName(),
+    email: faker.internet.email(),
+  }));
+  // Result: { "users": [{ "id": 1, "name": "...", "email": "..." }, ...] }
+  ```
 
-- **Type**: `object`
-- **Description**: The structure of the mock data to be generated. It supports nested objects and arrays.
-- **Special Fields**:
-  - `_repeat`: Specifies the number of times the template should be repeated. Must be a positive number.
+### Examples
 
-#### Meaning of `_repeat`:
+#### Without createAndMapArray
 
-- **With `_repeat`**: The template will be repeated the specified number of times, generating multiple entries.
-- **Without `_repeat`**: The template will be processed only once, generating a single entry.
+When you need simple properties without nested arrays:
 
-### Example Template
-
-```js
+```javascript
+import { faker } from "@faker-js/faker";
 import { monFactory } from "../monFactory.js";
 
-monFactory.create({
-  _key: "company",
-  _template: {
-    id: faker.number.int(),
-    name: faker.person.fullName(),
-    email: faker.internet.email(),
-    address: faker.location.streetAddress(),
-    job: {
-      title: faker.person.jobTitle(),
-      id: faker.number.int(),
-      company: {
-        name: faker.company.name(),
-        address: {
-          street: faker.location.streetAddress(),
-          city: faker.location.city(),
-          state: faker.location.state(),
-          zipCode: faker.location.zipCode(),
-        },
-      },
-      _repeat: 4,
-    },
-    _repeat: 4,
+monFactory.create(
+  {
+    _key: "products",
+    _repeat: 5,
   },
-});
+  () => ({
+    name: faker.commerce.productName(),
+    price: faker.commerce.price(),
+    department: faker.commerce.department(),
+    description: faker.commerce.productDescription(),
+    material: faker.commerce.productMaterial(),
+  })
+);
 ```
 
-This template will generate 10 entries with the specified structure.
+#### With createAndMapArray
 
-## Notes
+When you need nested arrays of related data:
 
-- All factory files should be placed in the `factory` folder.
-- The generated JSON files are stored in the `db` folder.
-- The merged database file is `db.json`.
+```javascript
+import { faker } from "@faker-js/faker";
+import { monFactory } from "../monFactory.js";
+import { createAndMapArray } from "../utils/arrayUtils.js";
+
+monFactory.create(
+  {
+    _key: "authors",
+    _repeat: 3,
+  },
+  () => ({
+    name: faker.person.fullName(),
+    email: faker.internet.email(),
+    bio: faker.lorem.paragraph(),
+    books: createAndMapArray(4, () => ({
+      title: faker.lorem.words(3),
+      publishYear: faker.date.past().getFullYear(),
+      genre: faker.word.sample(),
+      sales: faker.number.int({ min: 100, max: 10000 }),
+    })),
+  })
+);
+```
+
+## JSON Server Integration
+
+This project uses [json-server](https://www.npmjs.com/package/json-server) to create a RESTful API from the generated mock data.
+
+### Key Features
+
+- **Full REST API**: All standard HTTP methods (GET, POST, PUT, PATCH, DELETE)
+- **Filters**: Filter data using query parameters (`/users?name=John`)
+- **Pagination**: Paginate results with `_page` and `_limit` (`/users?_page=1&_limit=10`)
+- **Sorting**: Sort by fields (`/users?_sort=name&_order=asc`)
+- **Slice**: Get a subset of results (`/users?_start=10&_end=20`)
+- **Operators**: Use operators for comparisons (`/users?age_gte=18&age_lte=65`)
+- **Full-text search**: Search all fields (`/users?q=John`)
+- **Relationships**: Access nested resources (`/authors/1/books`)
+- **Routes**: Define custom routes in `routes.json`
+
+### Example API Requests
+
+After starting the server, you can make requests like:
+
+```
+GET    /companyItems          # Get all company items
+GET    /companyItems/1        # Get company item with id=1
+POST   /companyItems          # Create a new company item
+PUT    /companyItems/1        # Replace company item with id=1
+PATCH  /companyItems/1        # Partially update company item with id=1
+DELETE /companyItems/1        # Delete company item with id=1
+```
+
+### Advanced Configuration
+
+For advanced configuration, you can create a `json-server.json` file:
+
+```json
+{
+  "port": 3000,
+  "host": "0.0.0.0",
+  "watch": true,
+  "delay": 1000,
+  "routes": "routes.json"
+}
+```
+
+For more information, visit the [json-server documentation](https://github.com/typicode/json-server).
+
+## Project Structure
+
+```
+mock-server/
+├── core/              # Core functionality
+├── db/                # Generated individual JSON files
+├── factory/           # Factory definitions
+├── utils/             # Utility functions
+├── db.json            # Final merged JSON file (generated)
+├── monFactory.js      # Factory system main file
+├── package.json       # Project configuration
+├── README.md          # This file
+└── runner.js          # Runner script
+```

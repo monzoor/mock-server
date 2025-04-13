@@ -1,61 +1,53 @@
-import { ensureDirectoryExists, writeToFile, redText } from './utils/fileUtils.js';
-import { dbDir } from './utils/constants.js';
-import { generateData } from './utils/dataUtils.js';
-import { removeExtraDbFiles, mergeJsonFiles, runFactoryFiles } from './utils/fileOperations.js';
+/**
+ * Mock data factory system entry point.
+ * 
+ * This module serves as the main factory implementation for creating
+ * mock data. It exports the monFactory object which provides methods
+ * to generate structured mock data based on templates and save them
+ * to JSON files for consumption by json-server.
+ * 
+ * The factory pattern implemented here allows for consistent data
+ * generation across the application while ensuring proper file
+ * structure and organization.
+ */
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+import * as fileUtils from './utils/fileUtils.js';
+import { createMockData, getPaths } from './core/factoryCore.js';
+import { main } from './runner.js';
+
+const { dbDir } = getPaths();
+
+/**
+ * Factory for creating mock data and saving to JSON
+ */
 export const monFactory = {
-  create: ({ _key, _template, count = 1 }) => {
-    if (!_key || typeof _key !== 'string') {
-      throw new Error('"_key" must be a non-empty string.');
-    }
-
-    if (typeof _template !== 'object' || _template === null) {
-      throw new Error('"_template" must be a non-null object.');
-    }
-
-    const processTemplate = (template, index = 0) => {
-      if ('_repeat' in template) {
-        const repeatCount = template._repeat;
-        if (typeof repeatCount !== 'number' || repeatCount < 1) {
-          throw new Error(`Invalid "_repeat" value. "_repeat" must be a positive number.`);
-        }
-        const { _repeat, ...restTemplate } = template;
-        return Array.from({ length: repeatCount }, (_, i) => processTemplate(restTemplate, i));
-      }
-
-      const processedTemplate = {};
-      for (const key in template) {
-        if (typeof template[key] === 'object' && template[key] !== null) {
-          processedTemplate[key] = processTemplate(template[key], index);
-        } else {
-          processedTemplate[key] = template[key];
-        }
-      }
-      return generateData(processedTemplate, index);
-    };
-
-    const result = { [_key]: processTemplate(_template) };
-
-    ensureDirectoryExists(dbDir);
-
-    const filePath = `${dbDir}/${_key}.json`;
-    writeToFile(filePath, result);
-
-    return result;
-  },
-};
-
-export const main = async () => {
-  try {
-    await runFactoryFiles();
-    await removeExtraDbFiles();
-    await mergeJsonFiles();
-  } catch (err) {
-    console.error(redText('Unexpected error:'), err);
-    throw err;
+  /**
+   * Create mock data based on config and template function
+   * @param {Object} config - Configuration with _key and _repeat options
+   * @param {Function} templateFn - Template function to generate data
+   * @returns {Object} Created mock data
+   */
+  create: (config, templateFn) => {
+    fileUtils.ensureDirectoryExists(dbDir);
+    
+    const { key, data } = createMockData(config, templateFn);
+    
+    const filePath = path.join(dbDir, `${key}.json`);
+    fileUtils.writeJsonFileSync(filePath, data);
+    
+    return data;
   }
 };
 
+// Export main for direct execution
+export { main };
+
+// Run main if this is the entry point
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  main().catch(err => {
+    console.error('Unexpected error:', err);
+    process.exit(1); // Exit with error code to prevent json-server from starting
+  });
 }

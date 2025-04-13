@@ -1,14 +1,16 @@
 import { faker } from '@faker-js/faker';
 import { monFactory } from '../monFactory.js';
 
-monFactory.create({
-  _key: 'user',
-  _template: {
-    id: faker.number.int(),
+monFactory.create(
+  {
+    _key: "user",
+    _repeat: 5,
+  },
+  () => ({
     name: faker.person.fullName(),
     email: faker.internet.email(),
     address: faker.location.streetAddress(),
-    job: {
+    jobs: {
       title: faker.person.jobTitle(),
       id: faker.number.int(),
       company: {
@@ -20,8 +22,6 @@ monFactory.create({
           zipCode: faker.location.zipCode(),
         },
       },
-       _repeat: 2,
     },
-    _repeat: 4,
-  },
-});
+  })
+);
