@@ -8,8 +8,9 @@
  * and provide error handling.
  */
 
-import fs from 'fs/promises';
+import fs from 'fs';
 import { existsSync, writeFileSync, createWriteStream } from 'fs';
+import path from 'path';
 import { Transform } from 'stream';
 
 /**
@@ -20,7 +21,7 @@ import { Transform } from 'stream';
 export const ensureDirectoryExists = async (dirPath) => {
   try {
     if (!existsSync(dirPath)) {
-      await fs.mkdir(dirPath, { recursive: true });
+      await fs.promises.mkdir(dirPath, { recursive: true });
     }
   } catch (error) {
     console.error(`Error ensuring directory ${dirPath}:`, error);
@@ -40,7 +41,7 @@ export const writeJsonFile = async (filePath, data, sync = false) => {
     if (sync) {
       writeFileSync(filePath, jsonData, 'utf-8');
     } else {
-      await fs.writeFile(filePath, jsonData, 'utf-8');
+      await fs.promises.writeFile(filePath, jsonData, 'utf-8');
     }
   } catch (error) {
     console.error(`Error writing to ${filePath}:`, error);
@@ -55,7 +56,7 @@ export const writeJsonFile = async (filePath, data, sync = false) => {
  */
 export const readJsonFile = async (filePath) => {
   try {
-    const data = await fs.readFile(filePath, 'utf-8');
+    const data = await fs.promises.readFile(filePath, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
     console.error(`Error reading ${filePath}:`, error);
@@ -64,19 +65,25 @@ export const readJsonFile = async (filePath) => {
 };
 
 /**
- * Read files from directory that match a pattern
- * @param {string} dir - Directory to read
- * @param {RegExp} pattern - Pattern to match (default: all files)
- * @returns {Promise<string[]>} Array of matching filenames
+ * Read all files matching pattern from a directory
+ * @param {string} directory - Directory path to read from
+ * @param {RegExp} pattern - Pattern to match files against
+ * @returns {Promise<string[]>} Array of file names
  */
-export const readDirectoryFiles = async (dir, pattern = /.*/) => {
-  try {
-    const files = await fs.readdir(dir);
-    return files.filter(file => pattern.test(file));
-  } catch (error) {
-    console.error(`Error reading directory ${dir}:`, error);
-    throw error;
-  }
+export const readDirectoryFiles = async (directory, pattern) => {
+  return new Promise((resolve, reject) => {
+    fs.readdir(directory, (err, files) => {
+      if (err) {
+        console.error(`Error reading directory ${directory}:`, err);
+        reject(err);
+        return;
+      }
+      
+      const matchingFiles = files.filter(file => pattern.test(file));
+      console.log(`Found ${matchingFiles.length} files matching pattern in ${directory}:`, matchingFiles);
+      resolve(matchingFiles);
+    });
+  });
 };
 
 /**
@@ -87,7 +94,7 @@ export const readDirectoryFiles = async (dir, pattern = /.*/) => {
 export const deleteFile = async (filePath) => {
   try {
     if (existsSync(filePath)) {
-      await fs.unlink(filePath);
+      await fs.promises.unlink(filePath);
     }
   } catch (error) {
     console.error(`Error deleting ${filePath}:`, error);
@@ -215,5 +222,91 @@ export const shouldUseStreaming = (data, threshold = 10 * 1024 * 1024) => {
   } catch (error) {
     console.warn('Error estimating data size, defaulting to regular write:', error);
     return false;
+  }
+};
+
+/**
+ * Clean a directory by removing all files with specified extension
+ * @param {string} dirPath - Directory path to clean
+ * @param {string} [extension='.json'] - File extension to target for removal
+ * @returns {Promise<string[]>} List of removed files
+ */
+export const cleanDirectory = async (dirPath, extension = '.json') => {
+  try {
+    console.log(`Cleaning directory: ${dirPath} (removing ${extension} files)`);
+    
+    // Check if directory exists
+    if (!existsSync(dirPath)) {
+      console.log(`Directory ${dirPath} does not exist, nothing to clean`);
+      return [];
+    }
+    
+    // Read directory contents
+    const files = await fs.promises.readdir(dirPath);
+    const targetFiles = files.filter(file => file.toLowerCase().endsWith(extension));
+    
+    if (targetFiles.length === 0) {
+      console.log(`No ${extension} files found in ${dirPath}, nothing to clean`);
+      return [];
+    }
+    
+    console.log(`Found ${targetFiles.length} ${extension} files to remove`);
+    
+    // Remove each matching file
+    const removedFiles = [];
+    for (const file of targetFiles) {
+      const filePath = path.join(dirPath, file);
+      await fs.promises.unlink(filePath);
+      removedFiles.push(file);
+    }
+    
+    console.log(`✓ Removed ${removedFiles.length} old files from ${dirPath}`);
+    return removedFiles;
+  } catch (error) {
+    console.error(`Error cleaning directory ${dirPath}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Merge multiple JSON files into a single JSON file
+ * @param {string} sourceDir - Directory containing JSON files
+ * @param {string} outputFile - Path to output merged file
+ * @param {string[]} keys - Array of keys to include (should match filenames without extension)
+ * @returns {Promise<void>}
+ */
+export const mergeJsonFiles = async (sourceDir, outputFile, keys) => {
+  try {
+    console.log(`Merging JSON files for keys: ${keys.join(', ')}`);
+    const result = {};
+    
+    for (const key of keys) {
+      const filePath = path.join(sourceDir, `${key}.json`);
+      try {
+        if (existsSync(filePath)) {
+          const fileContent = await fs.promises.readFile(filePath, 'utf8');
+          const data = JSON.parse(fileContent);
+          if (data && data[key]) {
+            result[key] = data[key];
+            console.log(`✓ Successfully merged data for key: ${key}`);
+          } else {
+            console.warn(`⚠️ Data for key "${key}" not found in ${filePath}`);
+          }
+        } else {
+          console.warn(`⚠️ JSON file not found: ${filePath}`);
+        }
+      } catch (fileError) {
+        console.error(`Error processing ${filePath}:`, fileError);
+        // Continue with other files instead of failing completely
+      }
+    }
+    
+    // Write the merged result to the output file
+    await writeJsonFile(outputFile, result, true);
+    console.log(`✓ Successfully created merged JSON file: ${outputFile}`);
+    return result;
+  } catch (error) {
+    console.error('Error merging JSON files:', error);
+    throw error;
   }
 };

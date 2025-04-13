@@ -33,10 +33,10 @@ async function processFactoryFile() {
     });
   } 
   catch (error) {
-    console.error('Worker error:', error);
+    console.error(`Worker error in ${workerData.filePath}:`, error);
     parentPort.postMessage({
       status: 'error',
-      error: error.message
+      error: error.message || 'Unknown worker error'
     });
   }
 }

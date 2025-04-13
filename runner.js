@@ -9,12 +9,58 @@
  */
 
 import path from 'path';
+import fs from 'fs';
 import * as fileUtils from './utils/fileUtils.js';
 import { extractFactoryKeys, getPaths } from './core/factoryCore.js';
-import { runWithWorkers } from './utils/workerUtils.js';
+import { Worker } from 'worker_threads';
 import { configManager } from './config/configManager.js';
 
 const { factoryFolder, dbDir, outputFile } = getPaths();
+
+/**
+ * Process a factory file using worker threads
+ * @param {string} filePath - Path to the factory file
+ * @returns {Promise<Object>} Result of the processing
+ */
+const processFileWithWorker = (filePath) => {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker('./utils/factoryWorker.js', {
+      workerData: { filePath }
+    });
+
+    worker.on('message', (message) => {
+      if (message.status === 'completed') {
+        resolve(message.result);
+      } else if (message.status === 'error') {
+        reject(new Error(message.error));
+      }
+    });
+
+    worker.on('error', reject);
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Worker stopped with exit code ${code}`));
+      }
+    });
+  });
+};
+
+/**
+ * Process a factory file directly in the current process
+ * @param {string} filePath - Path to the factory file
+ * @returns {Promise<Object>} Result of the processing
+ */
+const processFileDirect = async (filePath) => {
+  try {
+    await import(filePath);
+    return {
+      file: path.basename(filePath),
+      success: true
+    };
+  } catch (error) {
+    throw error;
+  }
+};
 
 /**
  * Run all factory files to generate mock data
@@ -22,26 +68,68 @@ const { factoryFolder, dbDir, outputFile } = getPaths();
  */
 export const runFactoryFiles = async () => {
   try {
-    await fileUtils.ensureDirectoryExists(dbDir);
-    const jsFiles = await fileUtils.readDirectoryFiles(factoryFolder, /\.js$/);
-    const filePaths = jsFiles.map(file => path.join(factoryFolder, file));
+    // Ensure the directory exists
+    fileUtils.ensureDirectoryExists(dbDir);
     
-    // Check if parallel processing is enabled
-    const useParallel = configManager.get('processing.parallel', true);
+    // Clean the db directory to remove old files
+    await fileUtils.cleanDirectory(dbDir);
+    
+    // Get all JS files from the factory folder
+    const files = await fs.promises.readdir(factoryFolder);
+    const jsFiles = files.filter(file => file.toLowerCase().endsWith('.js'));
+    
+    console.log(`Found ${jsFiles.length} factory files to process: ${jsFiles.join(', ')}`);
+    
+    const results = {
+      succeeded: [],
+      failed: []
+    };
+    
+    // Determine if we should process in parallel
+    const useParallel = configManager.get('processing.parallel');
     
     if (useParallel) {
-      console.log('Using parallel processing for factory files');
-      const maxWorkers = configManager.get('processing.maxWorkers', 0);
-      await runWithWorkers(filePaths, maxWorkers);
+      console.log('Processing factory files in parallel using workers...');
+      const promises = jsFiles.map(file => {
+        const filePath = path.join(factoryFolder, file);
+        return processFileWithWorker(filePath)
+          .then(result => {
+            console.log(`✓ Successfully processed: ${file}`);
+            results.succeeded.push(file);
+            return result;
+          })
+          .catch(error => {
+            console.error(`✗ Error processing factory file ${file}:`, error);
+            results.failed.push({ file, error: error.message });
+            return { file, success: false, error: error.message };
+          });
+      });
+      
+      await Promise.all(promises);
     } else {
-      console.log('Using sequential processing for factory files');
-      for (const filePath of filePaths) {
-        console.log(`Running factory file: ${path.basename(filePath)}`);
-        await import(filePath);
+      console.log('Processing factory files sequentially...');
+      for (const file of jsFiles) {
+        const filePath = path.join(factoryFolder, file);
+        console.log(`Running factory file: ${file}`);
+        try {
+          await processFileDirect(filePath);
+          console.log(`✓ Successfully processed: ${file}`);
+          results.succeeded.push(file);
+        } catch (error) {
+          console.error(`✗ Error processing factory file ${file}:`, error);
+          results.failed.push({ file, error: error.message });
+        }
       }
     }
     
-    console.log('All factory files processed successfully');
+    if (results.failed.length > 0) {
+      console.warn(`⚠️ ${results.failed.length} factory files failed to process:`);
+      results.failed.forEach(failure => {
+        console.warn(`  - ${failure.file}: ${failure.error}`);
+      });
+    }
+    
+    console.log(`✓ Successfully processed ${results.succeeded.length} out of ${jsFiles.length} factory files`);
   } catch (error) {
     console.error('Error running factory files:', error);
     throw error;
@@ -49,68 +137,35 @@ export const runFactoryFiles = async () => {
 };
 
 /**
- * Merge all generated JSON files into one db.json file
+ * Main function to generate mock data
  * @returns {Promise<void>}
  */
-export const mergeJsonFiles = async () => {
+export async function main() {
   try {
-    const factoryKeys = await extractFactoryKeys();
-    const jsonFiles = await fileUtils.readDirectoryFiles(dbDir, /\.json$/);
+    console.log('Starting mock data generation...');
     
-    let mergedData = {};
-    
-    for (const file of jsonFiles) {
-      const filePath = path.join(dbDir, file);
-      const fileData = await fileUtils.readJsonFile(filePath);
-      const fileKey = Object.keys(fileData)[0];
-      
-      if (factoryKeys.has(fileKey)) {
-        mergedData = { ...mergedData, ...fileData };
-      } else {
-        console.log(`Removing redundant file: ${file}`);
-        await fileUtils.deleteFile(filePath);
-      }
-    }
-    
-    // Use streaming for large merged data
-    const useStreaming = configManager.get('factory.useStreaming') && 
-      fileUtils.shouldUseStreaming(mergedData, configManager.get('factory.streamingThreshold'));
-    
-    if (useStreaming) {
-      await fileUtils.streamJsonToFile(outputFile, mergedData, {
-        pretty: configManager.get('output.pretty')
-      });
-    } else {
-      await fileUtils.writeJsonFile(outputFile, mergedData);
-    }
-    
-    console.log(`Merged valid files into ${outputFile}`);
-  } catch (error) {
-    console.error('Error merging JSON files:', error);
-    throw error;
-  }
-};
-
-/**
- * Main function to run the entire process
- * @returns {Promise<void>}
- */
-export const main = async () => {
-  try {
     // Load configuration
     configManager.load();
-    console.log('Configuration loaded');
     
+    // Execute factory files
     await runFactoryFiles();
-    await mergeJsonFiles();
-    console.log('Mock server data generation complete!');
+    
+    // Extract keys and generate the final JSON database
+    const keys = await extractFactoryKeys();
+    console.log(`Found keys: ${Array.from(keys).join(', ')}`);
+    
+    await fileUtils.mergeJsonFiles(dbDir, outputFile, Array.from(keys));
+    console.log(`✓ Mock data successfully generated in ${outputFile}`);
   } catch (error) {
-    console.error('Fatal error in mock server data generation:', error);
-    process.exit(1);
+    console.error('Error generating mock data:', error);
+    throw error;
   }
-};
+}
 
 // Run main if this is the entry point
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  main().catch(err => {
+    console.error('Unexpected error:', err);
+    process.exit(1); // Exit with error code to prevent json-server from starting
+  });
 }

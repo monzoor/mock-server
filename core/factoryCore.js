@@ -10,6 +10,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as fileUtils from '../utils/fileUtils.js';
+import fs from 'fs';
 
 // Constants
 const __filename = fileURLToPath(import.meta.url);
@@ -71,24 +72,47 @@ export const createMockData = (config, templateFn) => {
  */
 export const extractFactoryKeys = async () => {
   try {
-    const jsFiles = await fileUtils.readDirectoryFiles(FACTORY_FOLDER, /\.js$/);
-    const keys = new Set();
-
-    for (const file of jsFiles) {
-      const filePath = path.join(FACTORY_FOLDER, file);
-      const fileContent = await import('fs').then(fs => 
-        fs.promises.readFile(filePath, 'utf8'));
+    let jsFiles = [];
+    try {
+      jsFiles = await fileUtils.readDirectoryFiles(FACTORY_FOLDER, /\.js$/);
+    } catch (error) {
+      console.warn("Error reading factory directory, falling back to process.cwd():", error);
       
-      const match = fileContent.match(/_key:\s*["']([^"']+)["']/);
-      if (match) {
-        keys.add(match[1]);
+      // Fallback to direct file reading using current directory + '/factory'
+      const factoryPath = path.join(process.cwd(), 'factory');
+      jsFiles = await new Promise((resolve, reject) => {
+        fs.readdir(factoryPath, (err, files) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(files.filter(file => /\.js$/.test(file)));
+        });
+      });
+    }
+    
+    const keys = new Set();
+    
+    for (const file of jsFiles) {
+      try {
+        const filePath = path.join(FACTORY_FOLDER, file);
+        const fileContent = await fs.promises.readFile(filePath, 'utf8');
+        
+        const match = fileContent.match(/_key:\s*["']([^"']+)["']/);
+        if (match) {
+          keys.add(match[1]);
+        }
+      } catch (error) {
+        console.warn(`Error extracting key from ${file}:`, error);
+        // Continue with next file
       }
     }
-
+    
     return keys;
   } catch (error) {
     console.error('Error extracting keys:', error);
-    throw error;
+    // Return empty set instead of throwing
+    return new Set();
   }
 };
 
